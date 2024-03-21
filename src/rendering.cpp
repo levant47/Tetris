@@ -77,11 +77,16 @@ void draw_rectangle(int x0, int y0, int width, int height, Pixel color, Bitmap b
     }
 }
 
-Vector draw_text(int x0, int y0, Pixel color, TTF_Font* font, char* text, Bitmap bitmap)
+SDL_Surface* text_to_surface(Pixel color, TTF_Font* font, char* text)
 {
     SDL_Color sdl_color;
     set_memory(0xff, sizeof(sdl_color), &sdl_color);
-    SDL_Surface* text_surface = TTF_RenderText_Solid(font, text, sdl_color);
+    return TTF_RenderText_Solid(font, text, sdl_color);
+}
+
+Vector draw_text(int x0, int y0, Pixel color, TTF_Font* font, char* text, Bitmap bitmap)
+{
+    auto text_surface = text_to_surface(color, font, text);
     if (!text_surface) { panic_sdl("TTF_RenderText_Solid"); }
     for (auto y = 0; y < text_surface->h; y++)
     {
@@ -97,4 +102,14 @@ Vector draw_text(int x0, int y0, Pixel color, TTF_Font* font, char* text, Bitmap
     auto result = make_vector(text_surface->w, text_surface->h);
     SDL_FreeSurface(text_surface);
     return result;
+}
+
+Vector draw_text_with_shade(int x0, int y0, Pixel color, int shade, Pixel shade_color, TTF_Font* font, char* text, Bitmap bitmap)
+{
+    draw_text(x0 - shade, y0 - shade, shade_color, font, text, bitmap);
+    draw_text(x0 + shade, y0 + shade, shade_color, font, text, bitmap);
+    auto dimensions = draw_text(x0, y0, color, font, text, bitmap);
+    dimensions.x += shade;
+    dimensions.y += shade;
+    return dimensions;
 }

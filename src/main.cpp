@@ -51,6 +51,7 @@ struct PlayerInput
     bool down;
     bool up;
     bool r;
+    bool enter;
 };
 
 struct FallingShapeSavedState
@@ -271,26 +272,6 @@ void draw_board(Bitmap bitmap)
     );
 }
 
-bool did_falling_shape_hit_the_ground()
-{
-    auto cell_map = g_game_state.falling_shape.cell_map;
-
-    if (g_game_state.falling_shape.y + cell_map.height == g_game_state.board.height) { return true; }
-
-    for (auto y = 0; y < cell_map.height; y++)
-    {
-        for (auto x = 0; x < cell_map.width; x++)
-        {
-            if (get_cell(x, y, cell_map)
-                && get_cell(x + g_game_state.falling_shape.x, y + g_game_state.falling_shape.y + 1, g_game_state.board))
-            {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
 void cement_falling_shape()
 {
     auto cell_map = g_game_state.falling_shape.cell_map;
@@ -429,6 +410,7 @@ int main(int, char**)
         }
     }
 
+    float fps = 0;
     while (true)
     {
         auto frame_start = (int)SDL_GetTicks();
@@ -453,6 +435,7 @@ int main(int, char**)
                     g_game_state.input.down |= sym == SDLK_DOWN;
                     g_game_state.input.up |= sym == SDLK_UP;
                     g_game_state.input.r |= sym == SDLK_r;
+                    g_game_state.input.enter |= sym == SDLK_RETURN;
                     break;
                 }
             }
@@ -461,6 +444,17 @@ int main(int, char**)
 
         // state
         {
+            if (g_game_state.input.enter)
+            {
+                g_game_state.game_over = false;
+                generate_new_falling_shape();
+                // clear the board
+                for (auto y = 0; y < g_game_state.board.height; y++)
+                {
+                    for (auto x = 0; x < g_game_state.board.width; x++)
+                    { set_cell(x, y, false, g_game_state.board); }
+                }
+            }
             if (g_game_state.input.r)
             {
                 save_falling_shape_state();
@@ -511,8 +505,38 @@ int main(int, char**)
 
             if (g_game_state.game_over)
             {
-                draw_text(0, 0, RED, g_game_state.resources.font32, "GAME OVER", screen);
+                auto game_over_text_surface = text_to_surface(RED, g_game_state.resources.font32, "GAME OVER");
+                auto game_over_text_dimensions = draw_text_with_shade(
+                    (screen.width - game_over_text_surface->w) / 2,
+                    (screen.height - game_over_text_surface->h) / 2,
+                    RED,
+                    2,
+                    BLACK,
+                    g_game_state.resources.font32,
+                    "GAME OVER",
+                    screen
+                );
+                SDL_FreeSurface(game_over_text_surface);
+
+                auto restart_text_surface = text_to_surface(WHITE, g_game_state.resources.font16, "(press ENTER to restart)");
+                draw_text_with_shade(
+                    (screen.width - restart_text_surface->w) / 2,
+                    (screen.height + game_over_text_dimensions.y) / 2,
+                    WHITE,
+                    2,
+                    BLACK,
+                    g_game_state.resources.font16,
+                    "(press ENTER to restart)",
+                    screen
+                );
+                SDL_FreeSurface(restart_text_surface);
             }
+
+            char fps_buffer_data[20];
+            auto fps_buffer = make_string(0, fps_buffer_data);
+            float_to_string(fps, &fps_buffer);
+            push('\0', &fps_buffer);
+            draw_text(0, 0, RED, g_game_state.resources.font16, fps_buffer.data, screen);
 
             SDL_UpdateWindowSurface(window);
         }
@@ -520,9 +544,7 @@ int main(int, char**)
         auto frame_end = (int)SDL_GetTicks();
         SDL_Delay(MAX(0, 16 - (frame_end - frame_start)));
         auto dt = ((int)SDL_GetTicks() - frame_start);
-        auto fps = 1000.0f / (float)dt;
-        print(fps);
-        print("\n");
+        fps = 1000.0f / (float)dt;
     }
 
     return 0;
