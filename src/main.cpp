@@ -52,6 +52,7 @@ struct PlayerInput
     bool up;
     bool r;
     bool enter;
+    bool escape;
 };
 
 struct FallingShapeSavedState
@@ -61,10 +62,17 @@ struct FallingShapeSavedState
     int cell_map_rotation;
 };
 
+enum GameMode
+{
+    GameModePlaying,
+    GameModeLost,
+    GameModePause,
+};
+
 struct GameState
 {
     u32 time;
-    bool game_over;
+    GameMode mode;
     CellMap board;
     FallingShape falling_shape;
     int falling_shape_saved_states_size;
@@ -88,9 +96,9 @@ CellMap SQUARE_SHAPE_CELL_MAP;
 CellMap T_SHAPE_CELL_MAP;
 CellMap PIPE_SHAPE_CELL_MAP;
 CellMap L_SHAPE_CELL_MAP;
-CellMap ANGLE_SHAPE_CELL_MAP;
+CellMap SNAKE_SHAPE_CELL_MAP;
 
-CellMap* ALL_SHAPES[] = { &SQUARE_SHAPE_CELL_MAP, &T_SHAPE_CELL_MAP, &PIPE_SHAPE_CELL_MAP, &L_SHAPE_CELL_MAP, &ANGLE_SHAPE_CELL_MAP };
+CellMap* ALL_SHAPES[] = { &SQUARE_SHAPE_CELL_MAP, &T_SHAPE_CELL_MAP, &PIPE_SHAPE_CELL_MAP, &L_SHAPE_CELL_MAP, &SNAKE_SHAPE_CELL_MAP };
 
 void initialize_shape_cell_maps()
 {
@@ -144,17 +152,18 @@ void initialize_shape_cell_maps()
     };
     copy_memory(l_shape_cell_map_size_in_bytes, l_shape_cells, L_SHAPE_CELL_MAP.data);
 
-    ANGLE_SHAPE_CELL_MAP.width = 2;
-    ANGLE_SHAPE_CELL_MAP.height = 2;
-    ANGLE_SHAPE_CELL_MAP.pitch = 2;
-    auto angle_shape_cell_map_size_in_bytes = ANGLE_SHAPE_CELL_MAP.width * ANGLE_SHAPE_CELL_MAP.height;
-    ANGLE_SHAPE_CELL_MAP.data = (bool*)malloc(angle_shape_cell_map_size_in_bytes);
-    bool angle_shape_cells[] =
+    SNAKE_SHAPE_CELL_MAP.width = 2;
+    SNAKE_SHAPE_CELL_MAP.height = 3;
+    SNAKE_SHAPE_CELL_MAP.pitch = 2;
+    auto snake_shape_cell_map_size_in_bytes = SNAKE_SHAPE_CELL_MAP.width * SNAKE_SHAPE_CELL_MAP.height;
+    SNAKE_SHAPE_CELL_MAP.data = (bool*)malloc(snake_shape_cell_map_size_in_bytes);
+    bool snake_shape_cells[] =
     {
         1, 0,
         1, 1,
+        0, 1,
     };
-    copy_memory(angle_shape_cell_map_size_in_bytes, angle_shape_cells, ANGLE_SHAPE_CELL_MAP.data);
+    copy_memory(snake_shape_cell_map_size_in_bytes, snake_shape_cells, SNAKE_SHAPE_CELL_MAP.data);
 }
 
 void save_falling_shape_state()
@@ -245,7 +254,7 @@ void draw_board(Bitmap bitmap)
     }
 
     // falling shape
-    if (!g_game_state.game_over)
+    if (g_game_state.mode != GameModeLost)
     {
         auto cell_map = g_game_state.falling_shape.cell_map;
         for (auto map_y = 0; map_y < cell_map.height; map_y++)
@@ -330,7 +339,7 @@ void check_for_game_over()
     {
         if (get_cell(x, 0, g_game_state.board))
         {
-            g_game_state.game_over = true;
+            g_game_state.mode = GameModeLost;
             break;
         }
     }
@@ -463,6 +472,7 @@ int main(int, char**)
                     g_game_state.input.up |= sym == SDLK_UP;
                     g_game_state.input.r |= sym == SDLK_r;
                     g_game_state.input.enter |= sym == SDLK_RETURN;
+                    g_game_state.input.escape |= sym == SDLK_ESCAPE;
                     break;
                 }
             }
@@ -471,43 +481,54 @@ int main(int, char**)
 
         // state
         {
-            if (g_game_state.input.enter)
+            if (g_game_state.mode == GameModePlaying)
             {
-                g_game_state.game_over = false;
-                generate_new_falling_shape();
-                // clear the board
-                for (auto y = 0; y < g_game_state.board.height; y++)
+                if (g_game_state.input.escape) { g_game_state.mode = GameModePause; }
+                if (g_game_state.input.r)
                 {
-                    for (auto x = 0; x < g_game_state.board.width; x++)
-                    { set_cell(x, y, false, g_game_state.board); }
+                    save_falling_shape_state();
+                    rotate(&g_game_state.falling_shape.cell_map);
+                    if (does_falling_shape_conflict_with_board())
+                    {
+                        g_game_state.falling_shape.x -= MAX(0, g_game_state.falling_shape.x + g_game_state.falling_shape.cell_map.width - g_game_state.board.width);
+                        if (does_falling_shape_conflict_with_board())
+                        { restore_falling_shape_state(); }
+                        else { discard_falling_shape_state(); }
+                    }
+                    else { discard_falling_shape_state(); }
                 }
-            }
-            if (g_game_state.input.r)
-            {
-                save_falling_shape_state();
-                rotate(&g_game_state.falling_shape.cell_map);
-                if (does_falling_shape_conflict_with_board())
+                if (g_game_state.input.left || g_game_state.input.right)
                 {
-                    g_game_state.falling_shape.x -= MAX(0, g_game_state.falling_shape.x + g_game_state.falling_shape.cell_map.width - g_game_state.board.width);
+                    save_falling_shape_state();
+                    g_game_state.falling_shape.x += g_game_state.input.left ? -1 : 1;
                     if (does_falling_shape_conflict_with_board())
                     { restore_falling_shape_state(); }
                     else { discard_falling_shape_state(); }
                 }
-                else { discard_falling_shape_state(); }
+                if (g_game_state.input.down) { g_game_state.quick_fall_mode = true; }
+                if (g_game_state.input.up) { g_game_state.quick_fall_mode = false; }
             }
-            if (g_game_state.input.left || g_game_state.input.right)
+            else if (g_game_state.mode == GameModeLost)
             {
-                save_falling_shape_state();
-                g_game_state.falling_shape.x += g_game_state.input.left ? -1 : 1;
-                if (does_falling_shape_conflict_with_board())
-                { restore_falling_shape_state(); }
-                else { discard_falling_shape_state(); }
+                if (g_game_state.input.enter)
+                {
+                    g_game_state.mode = GameModePlaying;
+                    generate_new_falling_shape();
+                    // clear the board
+                    for (auto y = 0; y < g_game_state.board.height; y++)
+                    {
+                        for (auto x = 0; x < g_game_state.board.width; x++)
+                        { set_cell(x, y, false, g_game_state.board); }
+                    }
+                }
             }
-            if (g_game_state.input.down) { g_game_state.quick_fall_mode = true; }
-            if (g_game_state.input.up) { g_game_state.quick_fall_mode = false; }
+            else
+            {
+                if (g_game_state.input.escape) { g_game_state.mode = GameModePlaying; }
+            }
 
             auto falling_shape_period = g_game_state.quick_fall_mode ? QUICK_FALL_PERIOD_MS : FALLING_SHAPE_PERIOD_MS;
-            if (!g_game_state.game_over && g_game_state.time - g_game_state.shape_fall_timer >= falling_shape_period)
+            if (g_game_state.mode == GameModePlaying && g_game_state.time - g_game_state.shape_fall_timer >= falling_shape_period)
             {
                 g_game_state.shape_fall_timer = g_game_state.time;
                 save_falling_shape_state();
@@ -530,7 +551,7 @@ int main(int, char**)
 
             draw_board(screen);
 
-            if (g_game_state.game_over)
+            if (g_game_state.mode == GameModeLost)
             {
                 auto game_over_text_surface = text_to_surface(RED, g_game_state.resources.font32, "GAME OVER");
                 auto game_over_text_dimensions = draw_text_with_shade(
@@ -557,6 +578,21 @@ int main(int, char**)
                     screen
                 );
                 SDL_FreeSurface(restart_text_surface);
+            }
+            if (g_game_state.mode == GameModePause)
+            {
+                auto paused_text_surface = text_to_surface(WHITE, g_game_state.resources.font32, "PAUSED");
+                draw_text_with_shade(
+                    (screen.width - paused_text_surface->w) / 2,
+                    (screen.height - paused_text_surface->h) / 2,
+                    WHITE,
+                    2,
+                    BLACK,
+                    g_game_state.resources.font32,
+                    "PAUSED",
+                    screen
+                );
+                SDL_FreeSurface(paused_text_surface);
             }
 
             char fps_buffer_data[20];
