@@ -87,8 +87,10 @@ GameState g_game_state;
 CellMap SQUARE_SHAPE_CELL_MAP;
 CellMap T_SHAPE_CELL_MAP;
 CellMap PIPE_SHAPE_CELL_MAP;
+CellMap L_SHAPE_CELL_MAP;
+CellMap ANGLE_SHAPE_CELL_MAP;
 
-CellMap* ALL_SHAPES[] = { &SQUARE_SHAPE_CELL_MAP, &T_SHAPE_CELL_MAP, &PIPE_SHAPE_CELL_MAP };
+CellMap* ALL_SHAPES[] = { &SQUARE_SHAPE_CELL_MAP, &T_SHAPE_CELL_MAP, &PIPE_SHAPE_CELL_MAP, &L_SHAPE_CELL_MAP, &ANGLE_SHAPE_CELL_MAP };
 
 void initialize_shape_cell_maps()
 {
@@ -128,6 +130,31 @@ void initialize_shape_cell_maps()
         1,
     };
     copy_memory(pipe_shape_cell_map_size_in_bytes, pipe_shape_cells, PIPE_SHAPE_CELL_MAP.data);
+
+    L_SHAPE_CELL_MAP.width = 2;
+    L_SHAPE_CELL_MAP.height = 3;
+    L_SHAPE_CELL_MAP.pitch = 2;
+    auto l_shape_cell_map_size_in_bytes = L_SHAPE_CELL_MAP.width * L_SHAPE_CELL_MAP.height;
+    L_SHAPE_CELL_MAP.data = (bool*)malloc(l_shape_cell_map_size_in_bytes);
+    bool l_shape_cells[] =
+    {
+        1, 0,
+        1, 0,
+        1, 1,
+    };
+    copy_memory(l_shape_cell_map_size_in_bytes, l_shape_cells, L_SHAPE_CELL_MAP.data);
+
+    ANGLE_SHAPE_CELL_MAP.width = 2;
+    ANGLE_SHAPE_CELL_MAP.height = 2;
+    ANGLE_SHAPE_CELL_MAP.pitch = 2;
+    auto angle_shape_cell_map_size_in_bytes = ANGLE_SHAPE_CELL_MAP.width * ANGLE_SHAPE_CELL_MAP.height;
+    ANGLE_SHAPE_CELL_MAP.data = (bool*)malloc(angle_shape_cell_map_size_in_bytes);
+    bool angle_shape_cells[] =
+    {
+        1, 0,
+        1, 1,
+    };
+    copy_memory(angle_shape_cell_map_size_in_bytes, angle_shape_cells, ANGLE_SHAPE_CELL_MAP.data);
 }
 
 void save_falling_shape_state()
