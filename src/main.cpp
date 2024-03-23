@@ -326,7 +326,7 @@ void cement_falling_shape()
 
 void generate_new_falling_shape()
 {
-    g_game_state.falling_shape.cell_map = *ALL_SHAPES[g_game_state.time % countof(ALL_SHAPES)];
+    g_game_state.falling_shape.cell_map = *ALL_SHAPES[get_random_number_in_range(0, countof(ALL_SHAPES))];
     g_game_state.falling_shape.x = 3;
     g_game_state.falling_shape.y = 0;
     g_game_state.shape_fall_timer = g_game_state.time;

@@ -18,6 +18,10 @@ typedef unsigned long long u64;
 
 HANDLE g_stdout = NULL;
 
+s64 absolute(s64 value) { return value >= 0 ? value : -value; }
+
+s64 modulo(s64 dividend, s64 divisor) { return absolute(dividend % divisor); } 
+
 struct String
 {
     u64 size;
@@ -225,3 +229,37 @@ void panic_sdl(char* function_name)
     print("\n");
     ExitProcess(1);
 }
+
+struct SystemTime
+{
+    u32 year;
+    u32 month;
+    u32 day;
+    u32 hour;
+    u32 minute;
+    u32 second;
+    u32 milliseconds;
+};
+
+SystemTime get_system_time()
+{
+    SystemTime result;
+    SYSTEMTIME windows_system_time;
+    GetSystemTime(&windows_system_time);
+    result.year = windows_system_time.wYear;
+    result.month = windows_system_time.wMonth;
+    result.day = windows_system_time.wDay;
+    result.hour = windows_system_time.wHour;
+    result.minute = windows_system_time.wMinute;
+    result.second = windows_system_time.wSecond;
+    result.milliseconds = windows_system_time.wMilliseconds;
+    return result;
+}
+
+s64 previous_random = 1;
+
+s32 get_random_number() { return previous_random = previous_random * 1103515243 + 12345; }
+
+void seed_random_number_generator(s32 seed) { previous_random = seed; }
+
+s32 get_random_number_in_range(s32 min, s32 max) { return modulo(get_random_number(), max - min) + min; }
