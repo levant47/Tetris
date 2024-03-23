@@ -4,6 +4,7 @@ typedef u32 Pixel;
 #define WHITE 0xffffff
 #define RED 0xff0000
 #define LIGHT_PURPLE 0x770077
+#define PURPLE 0xff00ff
 
 struct Bitmap
 {

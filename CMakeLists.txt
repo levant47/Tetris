@@ -9,7 +9,7 @@ link_directories("${PROJECT_SOURCE_DIR}\\lib")
 
 include_directories("${PROJECT_SOURCE_DIR}")
 
-add_executable(tetris src/main.cpp)
+add_executable(tetris WIN32 src/main.cpp)
 
 target_link_libraries(tetris SDL2main.lib SDL2.lib SDL2_ttf.lib)
 

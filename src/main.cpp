@@ -12,6 +12,8 @@
 #define BOARD_HEIGHT 20
 #define FALLING_SHAPE_PERIOD_MS 500
 #define QUICK_FALL_PERIOD_MS 50
+#define STARTING_BOARD_COLOR_PERIOD 200
+#define MINIMUM_BOARD_COLOR_PERIOD 1
 
 struct CellMap
 {
@@ -77,10 +79,13 @@ struct GameState
     FallingShape falling_shape;
     int falling_shape_saved_states_size;
     FallingShapeSavedState falling_shape_saved_states[4];
-    u32 shape_fall_timer;
+    s32 shape_fall_timer;
     bool quick_fall_mode;
     int score;
     int high_score;
+    Pixel board_color;
+    s32 board_color_timer;
+    s32 board_color_going_negative;
 
     PlayerInput input;
     struct
@@ -234,7 +239,7 @@ void draw_board(Bitmap bitmap)
     }
 
     // fill cells
-    auto cell_padding = cell_size / 10;
+    auto cell_padding = cell_size / 20;
     for (auto y = 0; y < BOARD_HEIGHT; y++)
     {
         for (auto x = 0; x < BOARD_WIDTH; x++)
@@ -244,9 +249,9 @@ void draw_board(Bitmap bitmap)
                 draw_rectangle(
                     side_padding + x * cell_size + cell_padding,
                     top_bottom_padding + y * cell_size + cell_padding,
-                    cell_size - cell_padding,
-                    cell_size - cell_padding,
-                    0xff00ff,
+                    cell_size - cell_padding * 2,
+                    cell_size - cell_padding * 2,
+                    g_game_state.board_color,
                     bitmap
                 );
             }
@@ -329,7 +334,7 @@ void generate_new_falling_shape()
     g_game_state.falling_shape.cell_map = *ALL_SHAPES[get_random_number_in_range(0, countof(ALL_SHAPES))];
     g_game_state.falling_shape.x = 3;
     g_game_state.falling_shape.y = 0;
-    g_game_state.shape_fall_timer = g_game_state.time;
+    g_game_state.shape_fall_timer = 0;
     g_game_state.quick_fall_mode = false;
 }
 
@@ -416,6 +421,7 @@ int main(int, char**)
 
     auto screen = make_bitmap(screen_surface->w, screen_surface->h, (Pixel*)screen_surface->pixels);
 
+    // TODO: better error handling in case resources are abset (i.e. a message box)
     g_game_state.resources.font16 = TTF_OpenFont("res/Sans.ttf", 16);
     if (g_game_state.resources.font16 == NULL) { panic_sdl("TTF_OpenFont"); }
     g_game_state.resources.font32 = TTF_OpenFont("res/Sans.ttf", 32);
@@ -431,6 +437,8 @@ int main(int, char**)
     g_game_state.board.data = board_data;
     g_game_state.score = 0;
     g_game_state.high_score = load_high_score();
+    g_game_state.board_color = PURPLE;
+    g_game_state.board_color_going_negative = false;
     g_game_state.time = SDL_GetTicks();
     generate_new_falling_shape();
 
@@ -447,6 +455,7 @@ int main(int, char**)
     }
 
     float fps = 0;
+    int dt = 0;
     while (true)
     {
         auto frame_start = (int)SDL_GetTicks();
@@ -463,7 +472,7 @@ int main(int, char**)
                 case SDL_QUIT:
                     quit = true;
                     break;
-                case SDL_KEYUP:
+                case SDL_KEYDOWN:
                 {
                     auto sym = event.key.keysym.sym;
                     g_game_state.input.left |= sym == SDLK_LEFT;
@@ -505,8 +514,9 @@ int main(int, char**)
                     { restore_falling_shape_state(); }
                     else { discard_falling_shape_state(); }
                 }
-                if (g_game_state.input.down) { g_game_state.quick_fall_mode = true; }
-                if (g_game_state.input.up) { g_game_state.quick_fall_mode = false; }
+                // double checks here to prevent timer reset
+                if (g_game_state.input.down && !g_game_state.quick_fall_mode) { g_game_state.quick_fall_mode = true; g_game_state.shape_fall_timer = 0; }
+                if (g_game_state.input.up && g_game_state.quick_fall_mode) { g_game_state.quick_fall_mode = false; g_game_state.shape_fall_timer = 0; }
             }
             else if (g_game_state.mode == GameModeLost)
             {
@@ -514,6 +524,10 @@ int main(int, char**)
                 {
                     g_game_state.mode = GameModePlaying;
                     generate_new_falling_shape();
+                    g_game_state.board_color_timer = 0;
+                    g_game_state.board_color = PURPLE;
+                    g_game_state.board_color_going_negative = false;
+                    g_game_state.score = 0;
                     // clear the board
                     for (auto y = 0; y < g_game_state.board.height; y++)
                     {
@@ -527,21 +541,42 @@ int main(int, char**)
                 if (g_game_state.input.escape) { g_game_state.mode = GameModePlaying; }
             }
 
-            auto falling_shape_period = g_game_state.quick_fall_mode ? QUICK_FALL_PERIOD_MS : FALLING_SHAPE_PERIOD_MS;
-            if (g_game_state.mode == GameModePlaying && g_game_state.time - g_game_state.shape_fall_timer >= falling_shape_period)
+            if (g_game_state.mode == GameModePlaying)
             {
-                g_game_state.shape_fall_timer = g_game_state.time;
-                save_falling_shape_state();
-                g_game_state.falling_shape.y++;
-                if (does_falling_shape_conflict_with_board())
+                g_game_state.shape_fall_timer += dt;
+                auto falling_shape_period = g_game_state.quick_fall_mode ? QUICK_FALL_PERIOD_MS : FALLING_SHAPE_PERIOD_MS;
+                if (g_game_state.shape_fall_timer >= falling_shape_period)
                 {
-                    restore_falling_shape_state();
-                    cement_falling_shape();
-                    clear_solid_rows();
-                    generate_new_falling_shape();
-                    check_for_game_over();
+                    g_game_state.shape_fall_timer -= falling_shape_period;
+                    save_falling_shape_state();
+                    g_game_state.falling_shape.y++;
+                    if (does_falling_shape_conflict_with_board())
+                    {
+                        restore_falling_shape_state();
+                        cement_falling_shape();
+                        clear_solid_rows();
+                        generate_new_falling_shape();
+                        check_for_game_over();
+                    }
+                    else { discard_falling_shape_state(); }
                 }
-                else { discard_falling_shape_state(); }
+
+                if (g_game_state.score != 0)
+                {
+                    g_game_state.board_color_timer += dt;
+                    auto period = MAX(MINIMUM_BOARD_COLOR_PERIOD, STARTING_BOARD_COLOR_PERIOD - g_game_state.score * 10);
+                    if (g_game_state.board_color_timer >= period)
+                    {
+                        while (g_game_state.board_color_timer > 0)
+                        {
+                            g_game_state.board_color_timer -= period;
+                            if ((g_game_state.board_color & 0xff) == 0xff) { g_game_state.board_color_going_negative = true; }
+                            else if ((g_game_state.board_color & 0xff) == 0) { g_game_state.board_color_going_negative = false; }
+                            auto channel = ((g_game_state.board_color & 0xff) + (g_game_state.board_color_going_negative ? -1 : 1)) % 0x100;
+                            g_game_state.board_color = 0xff0000 | channel;
+                        }
+                    }
+                }
             }
         }
 
@@ -606,7 +641,7 @@ int main(int, char**)
 
         auto frame_end = (int)SDL_GetTicks();
         SDL_Delay(MAX(0, 16 - (frame_end - frame_start)));
-        auto dt = ((int)SDL_GetTicks() - frame_start);
+        dt = ((int)SDL_GetTicks() - frame_start);
         fps = 1000.0f / (float)dt;
     }
 
