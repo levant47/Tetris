@@ -405,6 +405,23 @@ bool does_falling_shape_conflict_with_board()
     return false;
 }
 
+void generate_initial_board_layout()
+{
+    auto hole1 = get_random_number_in_range(0, BOARD_WIDTH);
+    auto hole2 = get_random_number_in_range(0, BOARD_WIDTH);
+    for (auto y = 0; y < BOARD_HEIGHT; y++)
+    {
+        for (auto x = 0; x < BOARD_WIDTH; x++)
+        {
+            if (y < BOARD_HEIGHT - 2) { set_cell(x, y, false, g_game_state.board); }
+            else if (y == BOARD_HEIGHT - 2)
+            { set_cell(x, y, x != hole1, g_game_state.board); }
+            else { set_cell(x, y, x != hole2, g_game_state.board); }
+        }
+    }
+
+}
+
 int main(int, char**)
 {
     auto sdl_init_result = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
@@ -421,7 +438,6 @@ int main(int, char**)
 
     auto screen = make_bitmap(screen_surface->w, screen_surface->h, (Pixel*)screen_surface->pixels);
 
-    // TODO: better error handling in case resources are abset (i.e. a message box)
     g_game_state.resources.font16 = TTF_OpenFont("res/Sans.ttf", 16);
     if (g_game_state.resources.font16 == NULL) { panic_sdl("TTF_OpenFont"); }
     g_game_state.resources.font32 = TTF_OpenFont("res/Sans.ttf", 32);
@@ -441,18 +457,7 @@ int main(int, char**)
     g_game_state.board_color_going_negative = false;
     g_game_state.time = SDL_GetTicks();
     generate_new_falling_shape();
-
-    // DEBUG
-    for (auto y = BOARD_HEIGHT - 2; y < BOARD_HEIGHT; y++)
-    {
-        for (auto x = 0; x < BOARD_WIDTH; x++)
-        {
-            if (x != (y % BOARD_WIDTH)) // make a hole in each line
-            {
-                board_data[y * BOARD_WIDTH + x] = true;
-            }
-        }
-    }
+    generate_initial_board_layout();
 
     float fps = 0;
     int dt = 0;
@@ -528,12 +533,7 @@ int main(int, char**)
                     g_game_state.board_color = PURPLE;
                     g_game_state.board_color_going_negative = false;
                     g_game_state.score = 0;
-                    // clear the board
-                    for (auto y = 0; y < g_game_state.board.height; y++)
-                    {
-                        for (auto x = 0; x < g_game_state.board.width; x++)
-                        { set_cell(x, y, false, g_game_state.board); }
-                    }
+                    generate_initial_board_layout();
                 }
             }
             else

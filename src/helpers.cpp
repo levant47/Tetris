@@ -1,4 +1,3 @@
-#define STDOUT_INITIALIZATION_FAILED_EXIT_CODE 2
 #define MIN_S64 -9223372036854775808LL
 #define QUOTE(macro) #macro
 #define DOUBLE_QUOTE(macro) QUOTE(macro)
@@ -72,6 +71,12 @@ int c_string_length(char* string)
     return result;
 }
 
+#define panic(message) panic_implementation(message, __FILE__, __LINE__)
+
+void panic_implementation(char* message, char* filename, int line);
+
+bool g_stdout_initialization_failed;
+
 void print(char* message, int length)
 {
     if (g_stdout == NULL)
@@ -79,7 +84,8 @@ void print(char* message, int length)
         g_stdout = GetStdHandle(STD_OUTPUT_HANDLE);
         if (g_stdout == NULL || g_stdout == INVALID_HANDLE_VALUE)
         {
-            ExitProcess(STDOUT_INITIALIZATION_FAILED_EXIT_CODE);
+            g_stdout_initialization_failed = true;
+            panic("Stdout initialization failed");
         }
     }
     WriteFile(g_stdout, message, length, NULL, NULL);
@@ -100,12 +106,13 @@ void copy_memory(u64 size, void* from, void* to)
     for (u64 i = 0; i < size; i++) { ((char*)to)[i] = ((char*)from)[i]; }
 }
 
-void assert(bool condition)
+#define assert(condition) assert_implementation(condition, __FILE__, __LINE__)
+
+void assert_implementation(bool condition, char* filename, int line)
 {
     if (!condition)
     {
-        print("Assertion failed\n");
-        ExitProcess(3);
+        panic_implementation("Assertion failed", filename, line);
     }
 }
 
@@ -221,13 +228,40 @@ void print(float value)
     print(string);
 }
 
-void panic_sdl(char* function_name)
+void panic_implementation(char* message, char* filename, int line)
 {
-    print(function_name);
-    print(": ");
-    print((char*)SDL_GetError());
-    print("\n");
+    char buffer_data[256];
+    auto buffer = make_string(0, buffer_data);
+    push("[", &buffer);
+    push(filename, &buffer);
+    push(":", &buffer);
+    int_to_string(line, &buffer);
+    push("] ", &buffer);
+    push(message, &buffer);
+    if (!g_stdout_initialization_failed)
+    {
+        auto original_size = buffer.size;
+        push("\n", &buffer);
+        print(buffer.data, buffer.size);
+        buffer.size = original_size;
+    }
+    push('\0', &buffer);
+    MessageBoxA(NULL, buffer.data, "Error", MB_OK);
     ExitProcess(1);
+}
+
+#define panic_sdl(function_name) panic_sdl_implementation(function_name, __FILE__, __LINE__)
+
+void panic_sdl_implementation(char* function_name, char* filename, int line)
+{
+    char buffer[256];
+    auto message = make_string(0, buffer);
+    push(function_name, &message);
+    push(": ", &message);
+    push((char*)SDL_GetError(), &message);
+    push("\n", &message);
+    push('\0', &message);
+    panic_implementation(message.data, filename, line);
 }
 
 struct SystemTime
