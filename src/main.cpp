@@ -232,7 +232,7 @@ void draw_board(Bitmap bitmap)
         draw_vertical_line(
             side_padding + i * cell_size - (i == BOARD_WIDTH ? line_width : 0),
             top_bottom_padding,
-            bitmap.width - top_bottom_padding,
+            bitmap.height - top_bottom_padding,
             LIGHT_PURPLE,
             bitmap
         );
@@ -430,13 +430,15 @@ int main(int, char**)
     auto ttf_init_result = TTF_Init();
     if (ttf_init_result < 0) { panic_sdl("TTF_Init"); }
 
-    auto window = SDL_CreateWindow("Tetris", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, /* flags: */ 0);
+    auto window = SDL_CreateWindow(
+        "Tetris",
+        SDL_WINDOWPOS_UNDEFINED,
+        SDL_WINDOWPOS_UNDEFINED,
+        SCREEN_WIDTH,
+        SCREEN_HEIGHT,
+        /* flags: */ SDL_WINDOW_RESIZABLE
+    );
     if (!window) { panic_sdl("SDL_CreateWindow"); }
-
-    auto screen_surface = SDL_GetWindowSurface(window);
-    if (screen_surface == NULL) { panic_sdl("SDL_GetWindowSurface"); }
-
-    auto screen = make_bitmap(screen_surface->w, screen_surface->h, (Pixel*)screen_surface->pixels);
 
     g_game_state.resources.font16 = TTF_OpenFont("res/Sans.ttf", 16);
     if (g_game_state.resources.font16 == NULL) { panic_sdl("TTF_OpenFont"); }
@@ -492,6 +494,10 @@ int main(int, char**)
             }
         }
         if (quit) { break; }
+
+        auto screen_surface = SDL_GetWindowSurface(window);
+        if (screen_surface == NULL) { panic_sdl("SDL_GetWindowSurface"); }
+        auto screen = make_bitmap(screen_surface->w, screen_surface->h, (Pixel*)screen_surface->pixels);
 
         // state
         {
@@ -560,21 +566,21 @@ int main(int, char**)
                     }
                     else { discard_falling_shape_state(); }
                 }
+            }
 
-                if (g_game_state.score != 0)
+            if (g_game_state.score != 0)
+            {
+                g_game_state.board_color_timer += dt;
+                auto period = MAX(MINIMUM_BOARD_COLOR_PERIOD, STARTING_BOARD_COLOR_PERIOD - g_game_state.score * 10);
+                if (g_game_state.board_color_timer >= period)
                 {
-                    g_game_state.board_color_timer += dt;
-                    auto period = MAX(MINIMUM_BOARD_COLOR_PERIOD, STARTING_BOARD_COLOR_PERIOD - g_game_state.score * 10);
-                    if (g_game_state.board_color_timer >= period)
+                    while (g_game_state.board_color_timer > 0)
                     {
-                        while (g_game_state.board_color_timer > 0)
-                        {
-                            g_game_state.board_color_timer -= period;
-                            if ((g_game_state.board_color & 0xff) == 0xff) { g_game_state.board_color_going_negative = true; }
-                            else if ((g_game_state.board_color & 0xff) == 0) { g_game_state.board_color_going_negative = false; }
-                            auto channel = ((g_game_state.board_color & 0xff) + (g_game_state.board_color_going_negative ? -1 : 1)) % 0x100;
-                            g_game_state.board_color = 0xff0000 | channel;
-                        }
+                        g_game_state.board_color_timer -= period;
+                        if ((g_game_state.board_color & 0xff) == 0xff) { g_game_state.board_color_going_negative = true; }
+                        else if ((g_game_state.board_color & 0xff) == 0) { g_game_state.board_color_going_negative = false; }
+                        auto channel = ((g_game_state.board_color & 0xff) + (g_game_state.board_color_going_negative ? -1 : 1)) % 0x100;
+                        g_game_state.board_color = 0xff0000 | channel;
                     }
                 }
             }
