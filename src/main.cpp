@@ -14,30 +14,45 @@
 #define QUICK_FALL_PERIOD_MS 50
 #define STARTING_BOARD_COLOR_PERIOD 200
 #define MINIMUM_BOARD_COLOR_PERIOD 1
+#define CELL_MAP_PITCH 20
+
+// TODO:
+// [ ] power-ups: mirror, fill cell, invert board
 
 struct CellMap
 {
     int width, height;
-    int pitch;
-    bool* data;
-    int rotation;
+    bool data[CELL_MAP_PITCH * CELL_MAP_PITCH];
 };
+
+CellMap make_cell_map(int width, int height)
+{
+    CellMap result;
+    result.width = width;
+    result.height = height;
+    set_memory(0, sizeof(result.data), result.data);
+    return result;
+}
 
 bool get_cell(int x, int y, CellMap cell_map)
 {
     if (x < 0 || x >= cell_map.width || y < 0 || y >= cell_map.height) { return false; }
-    auto coordinates = rotate((360 - cell_map.rotation) % 360, make_vector(x, y), make_vector(cell_map.width, cell_map.height));
-    return cell_map.data[coordinates.y * cell_map.pitch + coordinates.x];
+    return cell_map.data[y * CELL_MAP_PITCH + x];
 }
 
-void set_cell(int x, int y, bool value, CellMap board) { board.data[y * board.width + x] = value; }
+void set_cell(int x, int y, bool value, CellMap* cell_map) { cell_map->data[y * CELL_MAP_PITCH + x] = value; }
 
-void rotate(CellMap* cell_map)
+void rotate(CellMap* source)
 {
-    cell_map->rotation = (cell_map->rotation + 90) % 360;
-    auto temp = cell_map->width;
-    cell_map->width = cell_map->height;
-    cell_map->height = temp;
+    auto rotated_cell_map = make_cell_map(source->height, source->width);
+    for (auto y = 0; y < source->height; y++)
+    {
+        for (auto x = 0; x < source->width; x++)
+        {
+            set_cell(source->height - y - 1, x, get_cell(x, y, *source), &rotated_cell_map);
+        }
+    }
+    *source = rotated_cell_map;
 }
 
 struct FallingShape
@@ -55,13 +70,15 @@ struct PlayerInput
     bool r;
     bool enter;
     bool escape;
+    bool one;
+    bool two;
+    bool three;
 };
 
 struct FallingShapeSavedState
 {
     int x, y;
-    int cell_map_width, cell_map_height;
-    int cell_map_rotation;
+    CellMap cell_map;
 };
 
 enum GameMode
@@ -86,6 +103,9 @@ struct GameState
     Pixel board_color;
     s32 board_color_timer;
     s32 board_color_going_negative;
+    s32 mirror_power_ups;
+    s32 fill_cell_power_ups;
+    s32 invert_board_power_ups;
 
     PlayerInput input;
     struct
@@ -107,68 +127,78 @@ CellMap* ALL_SHAPES[] = { &SQUARE_SHAPE_CELL_MAP, &T_SHAPE_CELL_MAP, &PIPE_SHAPE
 
 void initialize_shape_cell_maps()
 {
-    SQUARE_SHAPE_CELL_MAP.width = 2;
-    SQUARE_SHAPE_CELL_MAP.height = 2;
-    SQUARE_SHAPE_CELL_MAP.pitch = 2;
-    auto square_shape_cell_map_size_in_bytes = SQUARE_SHAPE_CELL_MAP.width * SQUARE_SHAPE_CELL_MAP.height;
-    SQUARE_SHAPE_CELL_MAP.data = (bool*)malloc(square_shape_cell_map_size_in_bytes);
+    SQUARE_SHAPE_CELL_MAP = make_cell_map(2, 2);
     bool square_shape_cells[] =
     {
         1, 1,
         1, 1,
     };
-    copy_memory(square_shape_cell_map_size_in_bytes, square_shape_cells, SQUARE_SHAPE_CELL_MAP.data);
+    for (auto y = 0; y < SQUARE_SHAPE_CELL_MAP.height; y++)
+    {
+        for (auto x = 0; x < SQUARE_SHAPE_CELL_MAP.width; x++)
+        {
+            set_cell(x, y, square_shape_cells[y * SQUARE_SHAPE_CELL_MAP.width + x], &SQUARE_SHAPE_CELL_MAP);
+        }
+    }
 
-    T_SHAPE_CELL_MAP.width = 3;
-    T_SHAPE_CELL_MAP.height = 2;
-    T_SHAPE_CELL_MAP.pitch = 3;
-    auto t_shape_cell_map_size_in_bytes = T_SHAPE_CELL_MAP.width * T_SHAPE_CELL_MAP.height;
-    T_SHAPE_CELL_MAP.data = (bool*)malloc(t_shape_cell_map_size_in_bytes);
+    T_SHAPE_CELL_MAP = make_cell_map(3, 2);
     bool t_shape_cells[] =
     {
         1, 1, 1,
         0, 1, 0,
     };
-    copy_memory(t_shape_cell_map_size_in_bytes, t_shape_cells, T_SHAPE_CELL_MAP.data);
+    for (auto y = 0; y < T_SHAPE_CELL_MAP.height; y++)
+    {
+        for (auto x = 0; x < T_SHAPE_CELL_MAP.width; x++)
+        {
+            set_cell(x, y, t_shape_cells[y * T_SHAPE_CELL_MAP.width + x], &T_SHAPE_CELL_MAP);
+        }
+    }
 
-    PIPE_SHAPE_CELL_MAP.width = 1;
-    PIPE_SHAPE_CELL_MAP.height = 3;
-    PIPE_SHAPE_CELL_MAP.pitch = 1;
-    auto pipe_shape_cell_map_size_in_bytes = PIPE_SHAPE_CELL_MAP.width * PIPE_SHAPE_CELL_MAP.height;
-    PIPE_SHAPE_CELL_MAP.data = (bool*)malloc(pipe_shape_cell_map_size_in_bytes);
+    PIPE_SHAPE_CELL_MAP = make_cell_map(1, 3);
     bool pipe_shape_cells[] =
     {
         1,
         1,
         1,
     };
-    copy_memory(pipe_shape_cell_map_size_in_bytes, pipe_shape_cells, PIPE_SHAPE_CELL_MAP.data);
+    for (auto y = 0; y < PIPE_SHAPE_CELL_MAP.height; y++)
+    {
+        for (auto x = 0; x < PIPE_SHAPE_CELL_MAP.width; x++)
+        {
+            set_cell(x, y, pipe_shape_cells[y * PIPE_SHAPE_CELL_MAP.width + x], &PIPE_SHAPE_CELL_MAP);
+        }
+    }
 
-    L_SHAPE_CELL_MAP.width = 2;
-    L_SHAPE_CELL_MAP.height = 3;
-    L_SHAPE_CELL_MAP.pitch = 2;
-    auto l_shape_cell_map_size_in_bytes = L_SHAPE_CELL_MAP.width * L_SHAPE_CELL_MAP.height;
-    L_SHAPE_CELL_MAP.data = (bool*)malloc(l_shape_cell_map_size_in_bytes);
+    L_SHAPE_CELL_MAP = make_cell_map(2, 3);
     bool l_shape_cells[] =
     {
         1, 0,
         1, 0,
         1, 1,
     };
-    copy_memory(l_shape_cell_map_size_in_bytes, l_shape_cells, L_SHAPE_CELL_MAP.data);
+    for (auto y = 0; y < L_SHAPE_CELL_MAP.height; y++)
+    {
+        for (auto x = 0; x < L_SHAPE_CELL_MAP.width; x++)
+        {
+            set_cell(x, y, l_shape_cells[y * L_SHAPE_CELL_MAP.width + x], &L_SHAPE_CELL_MAP);
+        }
+    }
 
-    SNAKE_SHAPE_CELL_MAP.width = 2;
-    SNAKE_SHAPE_CELL_MAP.height = 3;
-    SNAKE_SHAPE_CELL_MAP.pitch = 2;
-    auto snake_shape_cell_map_size_in_bytes = SNAKE_SHAPE_CELL_MAP.width * SNAKE_SHAPE_CELL_MAP.height;
-    SNAKE_SHAPE_CELL_MAP.data = (bool*)malloc(snake_shape_cell_map_size_in_bytes);
+    SNAKE_SHAPE_CELL_MAP = make_cell_map(2, 3);
     bool snake_shape_cells[] =
     {
         1, 0,
         1, 1,
         0, 1,
     };
-    copy_memory(snake_shape_cell_map_size_in_bytes, snake_shape_cells, SNAKE_SHAPE_CELL_MAP.data);
+    for (auto y = 0; y < SNAKE_SHAPE_CELL_MAP.height; y++)
+    {
+        for (auto x = 0; x < SNAKE_SHAPE_CELL_MAP.width; x++)
+        {
+            set_cell(x, y, snake_shape_cells[y * SNAKE_SHAPE_CELL_MAP.width + x], &SNAKE_SHAPE_CELL_MAP);
+        }
+    }
 }
 
 void save_falling_shape_state()
@@ -177,9 +207,7 @@ void save_falling_shape_state()
     auto i = g_game_state.falling_shape_saved_states_size;
     g_game_state.falling_shape_saved_states[i].x = g_game_state.falling_shape.x;
     g_game_state.falling_shape_saved_states[i].y = g_game_state.falling_shape.y;
-    g_game_state.falling_shape_saved_states[i].cell_map_width = g_game_state.falling_shape.cell_map.width;
-    g_game_state.falling_shape_saved_states[i].cell_map_height = g_game_state.falling_shape.cell_map.height;
-    g_game_state.falling_shape_saved_states[i].cell_map_rotation = g_game_state.falling_shape.cell_map.rotation;
+    g_game_state.falling_shape_saved_states[i].cell_map = g_game_state.falling_shape.cell_map;
     g_game_state.falling_shape_saved_states_size++;
 }
 
@@ -195,13 +223,11 @@ void restore_falling_shape_state()
     auto i = g_game_state.falling_shape_saved_states_size - 1;
     g_game_state.falling_shape.x = g_game_state.falling_shape_saved_states[i].x;
     g_game_state.falling_shape.y = g_game_state.falling_shape_saved_states[i].y;
-    g_game_state.falling_shape.cell_map.width = g_game_state.falling_shape_saved_states[i].cell_map_width;
-    g_game_state.falling_shape.cell_map.height = g_game_state.falling_shape_saved_states[i].cell_map_height;
-    g_game_state.falling_shape.cell_map.rotation = g_game_state.falling_shape_saved_states[i].cell_map_rotation;
-    discard_falling_shape_state();
+    g_game_state.falling_shape.cell_map = g_game_state.falling_shape_saved_states[i].cell_map;
+    g_game_state.falling_shape_saved_states_size--;
 }
 
-void draw_board(Bitmap bitmap)
+void draw_game_screen(Bitmap bitmap)
 {
     auto line_width = 1;
     auto min_side_padding = (int)(bitmap.width * .2);
@@ -311,6 +337,62 @@ void draw_board(Bitmap bitmap)
         buffer_data,
         bitmap
     );
+
+    // power ups
+    {
+        char power_up_text_data[256];
+        auto power_up_text = make_string(0, power_up_text_data);
+        auto power_up_color = WHITE;
+        auto y = top_bottom_padding;
+
+        push("Mirror shape: ", &power_up_text);
+        int_to_string(g_game_state.mirror_power_ups, &power_up_text);
+        push('\0', &power_up_text);
+        auto mirror_power_up_text_surface = text_to_surface(power_up_color, g_game_state.resources.font16, power_up_text.data);
+        draw_text(
+            side_padding - mirror_power_up_text_surface->w - 5,
+            y,
+            power_up_color,
+            g_game_state.resources.font16,
+            power_up_text.data,
+            bitmap
+        );
+        y += mirror_power_up_text_surface->h + 5;
+        power_up_text.size = 0;
+        SDL_FreeSurface(mirror_power_up_text_surface);
+
+        push("Fill cell: ", &power_up_text);
+        int_to_string(g_game_state.fill_cell_power_ups, &power_up_text);
+        push('\0', &power_up_text);
+        auto fill_cell_power_up_text_surface = text_to_surface(power_up_color, g_game_state.resources.font16, power_up_text.data);
+        draw_text(
+            side_padding - fill_cell_power_up_text_surface->w - 5,
+            y,
+            power_up_color,
+            g_game_state.resources.font16,
+            power_up_text.data,
+            bitmap
+        );
+        y += fill_cell_power_up_text_surface->h + 5;
+        power_up_text.size = 0;
+        SDL_FreeSurface(fill_cell_power_up_text_surface);
+
+        push("Invert board: ", &power_up_text);
+        int_to_string(g_game_state.invert_board_power_ups, &power_up_text);
+        push('\0', &power_up_text);
+        auto invert_board_power_up_text_surface = text_to_surface(power_up_color, g_game_state.resources.font16, power_up_text.data);
+        draw_text(
+            side_padding - invert_board_power_up_text_surface->w - 5,
+            y,
+            power_up_color,
+            g_game_state.resources.font16,
+            power_up_text.data,
+            bitmap
+        );
+        y += invert_board_power_up_text_surface->h + 5;
+        power_up_text.size = 0;
+        SDL_FreeSurface(invert_board_power_up_text_surface);
+    }
 }
 
 void cement_falling_shape()
@@ -323,7 +405,7 @@ void cement_falling_shape()
         {
             if (get_cell(x, y, cell_map))
             {
-                set_cell(x + g_game_state.falling_shape.x, y + g_game_state.falling_shape.y, true, g_game_state.board);
+                set_cell(x + g_game_state.falling_shape.x, y + g_game_state.falling_shape.y, true, &g_game_state.board);
             }
         }
     }
@@ -355,7 +437,7 @@ void shift_everything_down(int until_y)
     for (auto y = until_y - 1; y >= 0; y--)
     {
         for (auto x = 0; x < g_game_state.board.width; x++)
-        { set_cell(x, y + 1, get_cell(x, y, g_game_state.board), g_game_state.board); }
+        { set_cell(x, y + 1, get_cell(x, y, g_game_state.board), &g_game_state.board); }
     }
 }
 
@@ -376,13 +458,22 @@ void clear_solid_rows()
         if (!gaps)
         {
             for (auto x = 0; x < g_game_state.board.width; x++)
-            { set_cell(x, y, false, g_game_state.board); }
+            { set_cell(x, y, false, &g_game_state.board); }
             shift_everything_down(y);
             g_game_state.score++;
             if (g_game_state.score > g_game_state.high_score)
             {
                 g_game_state.high_score = g_game_state.score;
                 save_high_score(g_game_state.score);
+            }
+            if (g_game_state.score % 5 == 0)
+            {
+                switch (get_random_number_in_range(0, 3))
+                {
+                    case 0: g_game_state.mirror_power_ups++; break;
+                    case 1: g_game_state.fill_cell_power_ups++; break;
+                    case 2: g_game_state.invert_board_power_ups++; break;
+                }
             }
         }
     }
@@ -413,10 +504,10 @@ void generate_initial_board_layout()
     {
         for (auto x = 0; x < BOARD_WIDTH; x++)
         {
-            if (y < BOARD_HEIGHT - 2) { set_cell(x, y, false, g_game_state.board); }
+            if (y < BOARD_HEIGHT - 2) { set_cell(x, y, false, &g_game_state.board); }
             else if (y == BOARD_HEIGHT - 2)
-            { set_cell(x, y, x != hole1, g_game_state.board); }
-            else { set_cell(x, y, x != hole2, g_game_state.board); }
+            { set_cell(x, y, x != hole1, &g_game_state.board); }
+            else { set_cell(x, y, x != hole2, &g_game_state.board); }
         }
     }
 
@@ -447,12 +538,7 @@ int main(int, char**)
 
     initialize_shape_cell_maps();
 
-    g_game_state.board.width = BOARD_WIDTH;
-    g_game_state.board.height = BOARD_HEIGHT;
-    g_game_state.board.pitch = BOARD_WIDTH;
-    bool board_data[BOARD_WIDTH * BOARD_HEIGHT];
-    set_memory(0, sizeof(board_data), board_data);
-    g_game_state.board.data = board_data;
+    g_game_state.board = make_cell_map(BOARD_WIDTH,BOARD_HEIGHT);
     g_game_state.score = 0;
     g_game_state.high_score = load_high_score();
     g_game_state.board_color = PURPLE;
@@ -489,6 +575,9 @@ int main(int, char**)
                     g_game_state.input.r |= sym == SDLK_r;
                     g_game_state.input.enter |= sym == SDLK_RETURN;
                     g_game_state.input.escape |= sym == SDLK_ESCAPE;
+                    g_game_state.input.one |= sym == SDLK_1;
+                    g_game_state.input.two |= sym == SDLK_2;
+                    g_game_state.input.three |= sym == SDLK_3;
                     break;
                 }
             }
@@ -580,7 +669,7 @@ int main(int, char**)
                         if ((g_game_state.board_color & 0xff) == 0xff) { g_game_state.board_color_going_negative = true; }
                         else if ((g_game_state.board_color & 0xff) == 0) { g_game_state.board_color_going_negative = false; }
                         auto channel = ((g_game_state.board_color & 0xff) + (g_game_state.board_color_going_negative ? -1 : 1)) % 0x100;
-                        g_game_state.board_color = 0xff0000 | channel;
+                        g_game_state.board_color = 0xff0000 | ((0xff - channel) << 8) | channel;
                     }
                 }
             }
@@ -590,7 +679,7 @@ int main(int, char**)
         {
             clear_bitmap(BLACK, screen);
 
-            draw_board(screen);
+            draw_game_screen(screen);
 
             if (g_game_state.mode == GameModeLost)
             {
