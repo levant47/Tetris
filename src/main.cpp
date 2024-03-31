@@ -18,6 +18,7 @@
 
 // TODO:
 // [ ] power-ups: mirror, fill cell, invert board
+// [ ] lagging?
 
 struct CellMap
 {
@@ -53,6 +54,19 @@ void rotate(CellMap* source)
         }
     }
     *source = rotated_cell_map;
+}
+
+void mirror(CellMap* cell_map)
+{
+    for (auto y = 0; y < cell_map->height; y++)
+    {
+        for (auto x = 0; x < cell_map->width / 2; x++)
+        {
+            auto temp = get_cell(x, y, *cell_map);
+            set_cell(x, y, get_cell(cell_map->width - x - 1, y, *cell_map), cell_map);
+            set_cell(cell_map->width - x - 1, y, temp, cell_map);
+        }
+    }
 }
 
 struct FallingShape
@@ -466,13 +480,14 @@ void clear_solid_rows()
                 g_game_state.high_score = g_game_state.score;
                 save_high_score(g_game_state.score);
             }
+            if (g_game_state.score % 2 == 0)
+            { g_game_state.mirror_power_ups = MIN(10, g_game_state.mirror_power_ups + 1); }
             if (g_game_state.score % 5 == 0)
             {
-                switch (get_random_number_in_range(0, 3))
+                switch (get_random_number_in_range(0, 2))
                 {
-                    case 0: g_game_state.mirror_power_ups++; break;
-                    case 1: g_game_state.fill_cell_power_ups++; break;
-                    case 2: g_game_state.invert_board_power_ups++; break;
+                    case 0: g_game_state.fill_cell_power_ups++; break;
+                    case 1: g_game_state.invert_board_power_ups++; break;
                 }
             }
         }
@@ -515,6 +530,8 @@ void generate_initial_board_layout()
 
 int main(int, char**)
 {
+    seed_random_number_generator(get_system_time().milliseconds);
+
     auto sdl_init_result = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
     if (sdl_init_result < 0) { panic_sdl("SDL_Init"); }
 
@@ -543,6 +560,7 @@ int main(int, char**)
     g_game_state.high_score = load_high_score();
     g_game_state.board_color = PURPLE;
     g_game_state.board_color_going_negative = false;
+    g_game_state.mirror_power_ups = 1;
     g_game_state.time = SDL_GetTicks();
     generate_new_falling_shape();
     generate_initial_board_layout();
@@ -605,6 +623,20 @@ int main(int, char**)
                         else { discard_falling_shape_state(); }
                     }
                     else { discard_falling_shape_state(); }
+                }
+                if (g_game_state.input.one)
+                {
+                    if (g_game_state.mirror_power_ups != 0)
+                    {
+                        save_falling_shape_state();
+                        mirror(&g_game_state.falling_shape.cell_map);
+                        if (!does_falling_shape_conflict_with_board())
+                        {
+                            g_game_state.mirror_power_ups--;
+                            discard_falling_shape_state();
+                        }
+                        else { restore_falling_shape_state(); }
+                    }
                 }
                 if (g_game_state.input.left || g_game_state.input.right)
                 {
