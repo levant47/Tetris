@@ -19,7 +19,11 @@
 // TODO:
 // [/] mirror
 // [/] fill cell
-// [ ] invert board
+// [/] invert board
+// [ ] lower power up frequency
+// [ ] visual hints for what buttons to press to activate what power-up
+// [ ] animations for clearing a row and activating a power up
+// [ ] textures for blocks?
 // [ ] lagging?
 
 struct CellMap
@@ -558,6 +562,7 @@ int main(int, char**)
     g_game_state.board_color_going_negative = false;
     g_game_state.mirror_power_ups = 1;
     g_game_state.fill_cell_power_ups = 1;
+    g_game_state.invert_board_power_ups = 1;
     g_game_state.time = SDL_GetTicks();
     generate_new_falling_shape();
     generate_initial_board_layout();
@@ -643,6 +648,41 @@ int main(int, char**)
                         g_game_state.falling_shape.cell_map.height = 1;
                         g_game_state.falling_shape.cell_map.data[0] = 1;
                         g_game_state.fill_cell_power_ups--;
+                    }
+                }
+                if (g_game_state.input.three)
+                {
+                    if (g_game_state.invert_board_power_ups != 0)
+                    {
+                        auto y0 = 0;
+                        for (auto y = 0; y < BOARD_HEIGHT; y++)
+                        {
+                            auto all_cells_blank = true;
+                            for (auto x = 0; x < BOARD_WIDTH; x++)
+                            {
+                                if (get_cell(x, y, g_game_state.board))
+                                {
+                                    all_cells_blank = false;
+                                    break;
+                                }
+                            }
+                            if (!all_cells_blank)
+                            {
+                                y0 = y;
+                                break;
+                            }
+                        }
+
+                        for (auto y = y0; y < y0 + (BOARD_HEIGHT - y0) / 2; y++)
+                        {
+                            for (auto x = 0; x < BOARD_WIDTH; x++)
+                            {
+                                auto temp = get_cell(x, y, g_game_state.board);
+                                set_cell(x, y, get_cell(x, BOARD_HEIGHT - (y - y0) - 1, g_game_state.board), &g_game_state.board);
+                                set_cell(x, BOARD_HEIGHT - (y - y0) - 1, temp, &g_game_state.board);
+                            }
+                        }
+                        g_game_state.invert_board_power_ups--;
                     }
                 }
                 if (g_game_state.input.left || g_game_state.input.right)
