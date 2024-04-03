@@ -17,7 +17,9 @@
 #define CELL_MAP_PITCH 20
 
 // TODO:
-// [ ] power-ups: mirror, fill cell, invert board
+// [/] mirror
+// [/] fill cell
+// [ ] invert board
 // [ ] lagging?
 
 struct CellMap
@@ -482,14 +484,8 @@ void clear_solid_rows()
             }
             if (g_game_state.score % 2 == 0)
             { g_game_state.mirror_power_ups = MIN(10, g_game_state.mirror_power_ups + 1); }
-            if (g_game_state.score % 5 == 0)
-            {
-                switch (get_random_number_in_range(0, 2))
-                {
-                    case 0: g_game_state.fill_cell_power_ups++; break;
-                    case 1: g_game_state.invert_board_power_ups++; break;
-                }
-            }
+            else { g_game_state.fill_cell_power_ups = MIN(10, g_game_state.fill_cell_power_ups + 1); }
+            if (g_game_state.score % 5 == 0) { g_game_state.invert_board_power_ups++; }
         }
     }
 }
@@ -561,6 +557,7 @@ int main(int, char**)
     g_game_state.board_color = PURPLE;
     g_game_state.board_color_going_negative = false;
     g_game_state.mirror_power_ups = 1;
+    g_game_state.fill_cell_power_ups = 1;
     g_game_state.time = SDL_GetTicks();
     generate_new_falling_shape();
     generate_initial_board_layout();
@@ -636,6 +633,16 @@ int main(int, char**)
                             discard_falling_shape_state();
                         }
                         else { restore_falling_shape_state(); }
+                    }
+                }
+                if (g_game_state.input.two)
+                {
+                    if (g_game_state.fill_cell_power_ups != 0)
+                    {
+                        g_game_state.falling_shape.cell_map.width = 1;
+                        g_game_state.falling_shape.cell_map.height = 1;
+                        g_game_state.falling_shape.cell_map.data[0] = 1;
+                        g_game_state.fill_cell_power_ups--;
                     }
                 }
                 if (g_game_state.input.left || g_game_state.input.right)
