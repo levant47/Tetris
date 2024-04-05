@@ -20,6 +20,8 @@
 // [/] mirror
 // [/] fill cell
 // [/] invert board
+// [/] bomb power up
+// [ ] refactor
 // [ ] lower power up frequency
 // [ ] visual hints for what buttons to press to activate what power-up
 // [ ] animations for clearing a row and activating a power up
@@ -93,6 +95,7 @@ struct PlayerInput
     bool one;
     bool two;
     bool three;
+    bool four;
 };
 
 struct FallingShapeSavedState
@@ -126,6 +129,7 @@ struct GameState
     s32 mirror_power_ups;
     s32 fill_cell_power_ups;
     s32 invert_board_power_ups;
+    s32 bomb_power_ups;
 
     PlayerInput input;
     struct
@@ -412,6 +416,22 @@ void draw_game_screen(Bitmap bitmap)
         y += invert_board_power_up_text_surface->h + 5;
         power_up_text.size = 0;
         SDL_FreeSurface(invert_board_power_up_text_surface);
+
+        push("Bomb: ", &power_up_text);
+        int_to_string(g_game_state.bomb_power_ups, &power_up_text);
+        push('\0', &power_up_text);
+        auto bomb_power_up_text_surface = text_to_surface(power_up_color, g_game_state.resources.font16, power_up_text.data);
+        draw_text(
+            side_padding - bomb_power_up_text_surface->w - 5,
+            y,
+            power_up_color,
+            g_game_state.resources.font16,
+            power_up_text.data,
+            bitmap
+        );
+        y += bomb_power_up_text_surface->h + 5;
+        power_up_text.size = 0;
+        SDL_FreeSurface(bomb_power_up_text_surface);
     }
 }
 
@@ -481,14 +501,20 @@ void clear_solid_rows()
             { set_cell(x, y, false, &g_game_state.board); }
             shift_everything_down(y);
             g_game_state.score++;
+
             if (g_game_state.score > g_game_state.high_score)
             {
                 g_game_state.high_score = g_game_state.score;
                 save_high_score(g_game_state.score);
             }
-            if (g_game_state.score % 2 == 0)
-            { g_game_state.mirror_power_ups = MIN(10, g_game_state.mirror_power_ups + 1); }
-            else { g_game_state.fill_cell_power_ups = MIN(10, g_game_state.fill_cell_power_ups + 1); }
+
+            switch (g_game_state.score % 3)
+            {
+                case 1: g_game_state.mirror_power_ups = MIN(10, g_game_state.mirror_power_ups + 1); break;
+                case 2: g_game_state.fill_cell_power_ups = MIN(10, g_game_state.fill_cell_power_ups + 1); break;
+                case 0: g_game_state.bomb_power_ups = MIN(10, g_game_state.bomb_power_ups + 1); break;
+            }
+
             if (g_game_state.score % 5 == 0) { g_game_state.invert_board_power_ups++; }
         }
     }
@@ -563,6 +589,7 @@ int main(int, char**)
     g_game_state.mirror_power_ups = 1;
     g_game_state.fill_cell_power_ups = 1;
     g_game_state.invert_board_power_ups = 1;
+    g_game_state.bomb_power_ups = 1;
     g_game_state.time = SDL_GetTicks();
     generate_new_falling_shape();
     generate_initial_board_layout();
@@ -598,6 +625,7 @@ int main(int, char**)
                     g_game_state.input.one |= sym == SDLK_1;
                     g_game_state.input.two |= sym == SDLK_2;
                     g_game_state.input.three |= sym == SDLK_3;
+                    g_game_state.input.four |= sym == SDLK_4;
                     break;
                 }
             }
@@ -683,6 +711,19 @@ int main(int, char**)
                             }
                         }
                         g_game_state.invert_board_power_ups--;
+                    }
+                }
+                if (g_game_state.input.four)
+                {
+                    if (g_game_state.bomb_power_ups != 0)
+                    {
+                        for (auto y = g_game_state.falling_shape.y - 1; y < g_game_state.falling_shape.y + g_game_state.falling_shape.cell_map.height + 1; y++)
+                        {
+                            for (auto x = g_game_state.falling_shape.x - 1; x < g_game_state.falling_shape.x + g_game_state.falling_shape.cell_map.width + 1; x++)
+                            { set_cell(x, y, false, &g_game_state.board); }
+                        }
+                        generate_new_falling_shape();
+                        g_game_state.bomb_power_ups--;
                     }
                 }
                 if (g_game_state.input.left || g_game_state.input.right)
