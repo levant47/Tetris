@@ -12,7 +12,6 @@
 #define BOARD_HEIGHT 20
 #define FALLING_SHAPE_PERIOD_MS 500
 #define QUICK_FALL_PERIOD_MS 50
-#define STARTING_BOARD_COLOR_PERIOD 200
 #define MINIMUM_BOARD_COLOR_PERIOD 1
 #define CELL_MAP_PITCH 20
 
@@ -83,21 +82,6 @@ struct FallingShape
     int x, y;
 };
 
-struct PlayerInput
-{
-    bool left;
-    bool right;
-    bool down;
-    bool up;
-    bool r;
-    bool enter;
-    bool escape;
-    bool one;
-    bool two;
-    bool three;
-    bool four;
-};
-
 struct FallingShapeSavedState
 {
     int x, y;
@@ -119,19 +103,37 @@ struct GameState
     FallingShape falling_shape;
     int falling_shape_saved_states_size;
     FallingShapeSavedState falling_shape_saved_states[4];
-    s32 shape_fall_timer;
     bool quick_fall_mode;
     int score;
     int high_score;
     Pixel board_color;
-    s32 board_color_timer;
-    s32 board_color_going_negative;
-    s32 mirror_power_ups;
-    s32 fill_cell_power_ups;
-    s32 invert_board_power_ups;
-    s32 bomb_power_ups;
-
-    PlayerInput input;
+    bool board_color_going_negative;
+    struct
+    {
+        s32 shape_fall;
+        s32 board_color;
+    } timers;
+    struct
+    {
+        s32 mirror;
+        s32 fill_cell;
+        s32 invert_board;
+        s32 bomb;
+    } power_ups;
+    struct
+    {
+        bool left;
+        bool right;
+        bool down;
+        bool up;
+        bool r;
+        bool enter;
+        bool escape;
+        bool one;
+        bool two;
+        bool three;
+        bool four;
+    } input;
     struct
     {
         TTF_Font* font16;
@@ -149,80 +151,44 @@ CellMap SNAKE_SHAPE_CELL_MAP;
 
 CellMap* ALL_SHAPES[] = { &SQUARE_SHAPE_CELL_MAP, &T_SHAPE_CELL_MAP, &PIPE_SHAPE_CELL_MAP, &L_SHAPE_CELL_MAP, &SNAKE_SHAPE_CELL_MAP };
 
+#define INITIALIZE_INDIVIDUAL_SHAPE_CELL_MAP(cell_map, cell_map_width, cell_map_height, ...) \
+{ \
+    bool data[] = { __VA_ARGS__ }; \
+    cell_map = make_cell_map(cell_map_width, cell_map_height); \
+    for (auto y = 0; y < cell_map.height; y++) \
+    { \
+        for (auto x = 0; x < cell_map.width; x++) \
+        { \
+            set_cell(x, y, data[y * cell_map_width + x], &cell_map); \
+        } \
+    } \
+}
+
 void initialize_shape_cell_maps()
 {
-    SQUARE_SHAPE_CELL_MAP = make_cell_map(2, 2);
-    bool square_shape_cells[] =
-    {
+    INITIALIZE_INDIVIDUAL_SHAPE_CELL_MAP(SQUARE_SHAPE_CELL_MAP, 2, 2,
         1, 1,
         1, 1,
-    };
-    for (auto y = 0; y < SQUARE_SHAPE_CELL_MAP.height; y++)
-    {
-        for (auto x = 0; x < SQUARE_SHAPE_CELL_MAP.width; x++)
-        {
-            set_cell(x, y, square_shape_cells[y * SQUARE_SHAPE_CELL_MAP.width + x], &SQUARE_SHAPE_CELL_MAP);
-        }
-    }
-
-    T_SHAPE_CELL_MAP = make_cell_map(3, 2);
-    bool t_shape_cells[] =
-    {
+    );
+    INITIALIZE_INDIVIDUAL_SHAPE_CELL_MAP(T_SHAPE_CELL_MAP, 3, 2,
         1, 1, 1,
         0, 1, 0,
-    };
-    for (auto y = 0; y < T_SHAPE_CELL_MAP.height; y++)
-    {
-        for (auto x = 0; x < T_SHAPE_CELL_MAP.width; x++)
-        {
-            set_cell(x, y, t_shape_cells[y * T_SHAPE_CELL_MAP.width + x], &T_SHAPE_CELL_MAP);
-        }
-    }
-
-    PIPE_SHAPE_CELL_MAP = make_cell_map(1, 3);
-    bool pipe_shape_cells[] =
-    {
+    );
+    INITIALIZE_INDIVIDUAL_SHAPE_CELL_MAP(PIPE_SHAPE_CELL_MAP, 1, 3,
         1,
         1,
         1,
-    };
-    for (auto y = 0; y < PIPE_SHAPE_CELL_MAP.height; y++)
-    {
-        for (auto x = 0; x < PIPE_SHAPE_CELL_MAP.width; x++)
-        {
-            set_cell(x, y, pipe_shape_cells[y * PIPE_SHAPE_CELL_MAP.width + x], &PIPE_SHAPE_CELL_MAP);
-        }
-    }
-
-    L_SHAPE_CELL_MAP = make_cell_map(2, 3);
-    bool l_shape_cells[] =
-    {
+    );
+    INITIALIZE_INDIVIDUAL_SHAPE_CELL_MAP(L_SHAPE_CELL_MAP, 2, 3,
         1, 0,
         1, 0,
         1, 1,
-    };
-    for (auto y = 0; y < L_SHAPE_CELL_MAP.height; y++)
-    {
-        for (auto x = 0; x < L_SHAPE_CELL_MAP.width; x++)
-        {
-            set_cell(x, y, l_shape_cells[y * L_SHAPE_CELL_MAP.width + x], &L_SHAPE_CELL_MAP);
-        }
-    }
-
-    SNAKE_SHAPE_CELL_MAP = make_cell_map(2, 3);
-    bool snake_shape_cells[] =
-    {
+    );
+    INITIALIZE_INDIVIDUAL_SHAPE_CELL_MAP(SNAKE_SHAPE_CELL_MAP, 2, 3,
         1, 0,
         1, 1,
         0, 1,
-    };
-    for (auto y = 0; y < SNAKE_SHAPE_CELL_MAP.height; y++)
-    {
-        for (auto x = 0; x < SNAKE_SHAPE_CELL_MAP.width; x++)
-        {
-            set_cell(x, y, snake_shape_cells[y * SNAKE_SHAPE_CELL_MAP.width + x], &SNAKE_SHAPE_CELL_MAP);
-        }
-    }
+    );
 }
 
 void save_falling_shape_state()
@@ -370,7 +336,7 @@ void draw_game_screen(Bitmap bitmap)
         auto y = top_bottom_padding;
 
         push("Mirror shape: ", &power_up_text);
-        int_to_string(g_game_state.mirror_power_ups, &power_up_text);
+        int_to_string(g_game_state.power_ups.mirror, &power_up_text);
         push('\0', &power_up_text);
         auto mirror_power_up_text_surface = text_to_surface(power_up_color, g_game_state.resources.font16, power_up_text.data);
         draw_text(
@@ -386,7 +352,7 @@ void draw_game_screen(Bitmap bitmap)
         SDL_FreeSurface(mirror_power_up_text_surface);
 
         push("Fill cell: ", &power_up_text);
-        int_to_string(g_game_state.fill_cell_power_ups, &power_up_text);
+        int_to_string(g_game_state.power_ups.fill_cell, &power_up_text);
         push('\0', &power_up_text);
         auto fill_cell_power_up_text_surface = text_to_surface(power_up_color, g_game_state.resources.font16, power_up_text.data);
         draw_text(
@@ -402,7 +368,7 @@ void draw_game_screen(Bitmap bitmap)
         SDL_FreeSurface(fill_cell_power_up_text_surface);
 
         push("Invert board: ", &power_up_text);
-        int_to_string(g_game_state.invert_board_power_ups, &power_up_text);
+        int_to_string(g_game_state.power_ups.invert_board, &power_up_text);
         push('\0', &power_up_text);
         auto invert_board_power_up_text_surface = text_to_surface(power_up_color, g_game_state.resources.font16, power_up_text.data);
         draw_text(
@@ -418,7 +384,7 @@ void draw_game_screen(Bitmap bitmap)
         SDL_FreeSurface(invert_board_power_up_text_surface);
 
         push("Bomb: ", &power_up_text);
-        int_to_string(g_game_state.bomb_power_ups, &power_up_text);
+        int_to_string(g_game_state.power_ups.bomb, &power_up_text);
         push('\0', &power_up_text);
         auto bomb_power_up_text_surface = text_to_surface(power_up_color, g_game_state.resources.font16, power_up_text.data);
         draw_text(
@@ -456,7 +422,7 @@ void generate_new_falling_shape()
     g_game_state.falling_shape.cell_map = *ALL_SHAPES[get_random_number_in_range(0, countof(ALL_SHAPES))];
     g_game_state.falling_shape.x = 3;
     g_game_state.falling_shape.y = 0;
-    g_game_state.shape_fall_timer = 0;
+    g_game_state.timers.shape_fall = 0;
     g_game_state.quick_fall_mode = false;
 }
 
@@ -510,12 +476,12 @@ void clear_solid_rows()
 
             switch (g_game_state.score % 3)
             {
-                case 1: g_game_state.mirror_power_ups = MIN(10, g_game_state.mirror_power_ups + 1); break;
-                case 2: g_game_state.fill_cell_power_ups = MIN(10, g_game_state.fill_cell_power_ups + 1); break;
-                case 0: g_game_state.bomb_power_ups = MIN(10, g_game_state.bomb_power_ups + 1); break;
+                case 1: g_game_state.power_ups.mirror = MIN(10, g_game_state.power_ups.mirror + 1); break;
+                case 2: g_game_state.power_ups.fill_cell = MIN(10, g_game_state.power_ups.fill_cell + 1); break;
+                case 0: g_game_state.power_ups.bomb = MIN(10, g_game_state.power_ups.bomb + 1); break;
             }
 
-            if (g_game_state.score % 5 == 0) { g_game_state.invert_board_power_ups++; }
+            if (g_game_state.score % 5 == 0) { g_game_state.power_ups.invert_board++; }
         }
     }
 }
@@ -586,13 +552,15 @@ int main(int, char**)
     g_game_state.high_score = load_high_score();
     g_game_state.board_color = PURPLE;
     g_game_state.board_color_going_negative = false;
-    g_game_state.mirror_power_ups = 1;
-    g_game_state.fill_cell_power_ups = 1;
-    g_game_state.invert_board_power_ups = 1;
-    g_game_state.bomb_power_ups = 1;
+    g_game_state.power_ups.mirror = 1;
+    g_game_state.power_ups.fill_cell = 1;
+    g_game_state.power_ups.invert_board = 1;
+    g_game_state.power_ups.bomb = 1;
     g_game_state.time = SDL_GetTicks();
     generate_new_falling_shape();
     generate_initial_board_layout();
+
+    auto starting_board_color_period = MAX(200, g_game_state.high_score * 10);
 
     float fps = 0;
     int dt = 0;
@@ -603,7 +571,7 @@ int main(int, char**)
 
         // event processing
         auto quit = false;
-        set_memory(0, sizeof(PlayerInput), &g_game_state.input);
+        set_memory(0, sizeof(g_game_state.input), &g_game_state.input);
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
@@ -656,13 +624,13 @@ int main(int, char**)
                 }
                 if (g_game_state.input.one)
                 {
-                    if (g_game_state.mirror_power_ups != 0)
+                    if (g_game_state.power_ups.mirror != 0)
                     {
                         save_falling_shape_state();
                         mirror(&g_game_state.falling_shape.cell_map);
                         if (!does_falling_shape_conflict_with_board())
                         {
-                            g_game_state.mirror_power_ups--;
+                            g_game_state.power_ups.mirror--;
                             discard_falling_shape_state();
                         }
                         else { restore_falling_shape_state(); }
@@ -670,17 +638,17 @@ int main(int, char**)
                 }
                 if (g_game_state.input.two)
                 {
-                    if (g_game_state.fill_cell_power_ups != 0)
+                    if (g_game_state.power_ups.fill_cell != 0)
                     {
                         g_game_state.falling_shape.cell_map.width = 1;
                         g_game_state.falling_shape.cell_map.height = 1;
                         g_game_state.falling_shape.cell_map.data[0] = 1;
-                        g_game_state.fill_cell_power_ups--;
+                        g_game_state.power_ups.fill_cell--;
                     }
                 }
                 if (g_game_state.input.three)
                 {
-                    if (g_game_state.invert_board_power_ups != 0)
+                    if (g_game_state.power_ups.invert_board != 0)
                     {
                         auto y0 = 0;
                         for (auto y = 0; y < BOARD_HEIGHT; y++)
@@ -710,12 +678,12 @@ int main(int, char**)
                                 set_cell(x, BOARD_HEIGHT - (y - y0) - 1, temp, &g_game_state.board);
                             }
                         }
-                        g_game_state.invert_board_power_ups--;
+                        g_game_state.power_ups.invert_board--;
                     }
                 }
                 if (g_game_state.input.four)
                 {
-                    if (g_game_state.bomb_power_ups != 0)
+                    if (g_game_state.power_ups.bomb != 0)
                     {
                         for (auto y = g_game_state.falling_shape.y - 1; y < g_game_state.falling_shape.y + g_game_state.falling_shape.cell_map.height + 1; y++)
                         {
@@ -723,7 +691,7 @@ int main(int, char**)
                             { set_cell(x, y, false, &g_game_state.board); }
                         }
                         generate_new_falling_shape();
-                        g_game_state.bomb_power_ups--;
+                        g_game_state.power_ups.bomb--;
                     }
                 }
                 if (g_game_state.input.left || g_game_state.input.right)
@@ -735,8 +703,8 @@ int main(int, char**)
                     else { discard_falling_shape_state(); }
                 }
                 // double checks here to prevent timer reset
-                if (g_game_state.input.down && !g_game_state.quick_fall_mode) { g_game_state.quick_fall_mode = true; g_game_state.shape_fall_timer = 0; }
-                if (g_game_state.input.up && g_game_state.quick_fall_mode) { g_game_state.quick_fall_mode = false; g_game_state.shape_fall_timer = 0; }
+                if (g_game_state.input.down && !g_game_state.quick_fall_mode) { g_game_state.quick_fall_mode = true; g_game_state.timers.shape_fall = 0; }
+                if (g_game_state.input.up && g_game_state.quick_fall_mode) { g_game_state.quick_fall_mode = false; g_game_state.timers.shape_fall = 0; }
             }
             else if (g_game_state.mode == GameModeLost)
             {
@@ -744,7 +712,7 @@ int main(int, char**)
                 {
                     g_game_state.mode = GameModePlaying;
                     generate_new_falling_shape();
-                    g_game_state.board_color_timer = 0;
+                    g_game_state.timers.board_color = 0;
                     g_game_state.board_color = PURPLE;
                     g_game_state.board_color_going_negative = false;
                     g_game_state.score = 0;
@@ -758,11 +726,11 @@ int main(int, char**)
 
             if (g_game_state.mode == GameModePlaying)
             {
-                g_game_state.shape_fall_timer += dt;
+                g_game_state.timers.shape_fall += dt;
                 auto falling_shape_period = g_game_state.quick_fall_mode ? QUICK_FALL_PERIOD_MS : FALLING_SHAPE_PERIOD_MS;
-                if (g_game_state.shape_fall_timer >= falling_shape_period)
+                if (g_game_state.timers.shape_fall >= falling_shape_period)
                 {
-                    g_game_state.shape_fall_timer -= falling_shape_period;
+                    g_game_state.timers.shape_fall -= falling_shape_period;
                     save_falling_shape_state();
                     g_game_state.falling_shape.y++;
                     if (does_falling_shape_conflict_with_board())
@@ -779,13 +747,13 @@ int main(int, char**)
 
             if (g_game_state.score != 0)
             {
-                g_game_state.board_color_timer += dt;
-                auto period = MAX(MINIMUM_BOARD_COLOR_PERIOD, STARTING_BOARD_COLOR_PERIOD - g_game_state.score * 10);
-                if (g_game_state.board_color_timer >= period)
+                g_game_state.timers.board_color += dt;
+                auto period = MAX(MINIMUM_BOARD_COLOR_PERIOD, starting_board_color_period - g_game_state.score * 10);
+                if (g_game_state.timers.board_color >= period)
                 {
-                    while (g_game_state.board_color_timer > 0)
+                    while (g_game_state.timers.board_color > 0)
                     {
-                        g_game_state.board_color_timer -= period;
+                        g_game_state.timers.board_color -= period;
                         if ((g_game_state.board_color & 0xff) == 0xff) { g_game_state.board_color_going_negative = true; }
                         else if ((g_game_state.board_color & 0xff) == 0) { g_game_state.board_color_going_negative = false; }
                         auto channel = ((g_game_state.board_color & 0xff) + (g_game_state.board_color_going_negative ? -1 : 1)) % 0x100;
